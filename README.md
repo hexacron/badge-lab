@@ -5,11 +5,12 @@ Tracking GitHub profile achievements for @hexacron, and a small script that show
 ## Usage
 
 ```sh
-python3 progress.py            # the account `gh` is logged in as
-python3 progress.py torvalds   # any public profile
+python3 progress.py                 # the account `gh` is logged in as
+python3 progress.py torvalds        # any public profile
+python3 progress.py --json hexacron # machine-readable output
 ```
 
-Python 3.9+ standard library only. Set `GITHUB_TOKEN` to raise the search-API rate limit. It reads earned achievements and tiers from the public profile page (`?tab=achievements`) and counts merged PRs in public repos through the search API.
+Python 3.9+ standard library only. Set `GITHUB_TOKEN` to raise the search-API rate limit. It reads earned achievements and tiers from the public profile page (`?tab=achievements`) and counts merged PRs in public repos through the search API. JSON output includes each tier's threshold and remaining count for scripts and dashboards.
 
 ## Achievements
 

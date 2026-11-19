@@ -5,6 +5,7 @@
 
 Python 3.9+ standard library only. Set GITHUB_TOKEN to raise the search-API rate limit.
 """
+import argparse
 import json
 import os
 import re
@@ -61,29 +62,75 @@ def next_tier(tiers, n):
     return next((t for t in tiers if t > n), None)
 
 
-def main():
-    user = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(
-        ["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, check=True).stdout.strip()
-    have = earned(user)
-    print(f"@{user}: {len(have)} achievement(s)")
-    for name, tier in sorted(have.items()):
+def collect_progress(user):
+    achievements = earned(user)
+    merged = merged_public_prs(user)
+    pull_shark_next = next_tier(PULL_SHARK_TIERS, merged)
+    repository = top_repo(user)
+    starstruck = None
+    if repository:
+        name, stars = repository
+        starstruck_next = next_tier(STARSTRUCK_TIERS, stars)
+        starstruck = {
+            "repository": name,
+            "stars": stars,
+            "next_tier": starstruck_next,
+            "remaining": starstruck_next - stars if starstruck_next else 0,
+        }
+
+    return {
+        "user": user,
+        "achievements": achievements,
+        "solo": {
+            name: {"earned": name in achievements, "how": how}
+            for name, how in SOLO.items()
+        },
+        "pull_shark": {
+            "merged_public_prs": merged,
+            "next_tier": pull_shark_next,
+            "remaining": pull_shark_next - merged if pull_shark_next else 0,
+        },
+        "starstruck": starstruck,
+    }
+
+
+def print_human(progress):
+    user = progress["user"]
+    achievements = progress["achievements"]
+    print(f"@{user}: {len(achievements)} achievement(s)")
+    for name, tier in sorted(achievements.items()):
         print(f"  {name}" + (f" x{tier}" if tier > 1 else ""))
 
     print("\nSolo-earnable:")
-    for name, how in SOLO.items():
-        print(f"  [{'x' if name in have else ' '}] {name}: {how}")
+    for name, status in progress["solo"].items():
+        print(f"  [{'x' if status['earned'] else ' '}] {name}: {status['how']}")
 
-    merged = merged_public_prs(user)
-    nxt = next_tier(PULL_SHARK_TIERS, merged)
+    pull_shark = progress["pull_shark"]
+    merged = pull_shark["merged_public_prs"]
+    nxt = pull_shark["next_tier"]
     print(f"\nPull Shark: {merged} merged PRs in public repos" +
-          (f", {nxt - merged} more for the next tier ({nxt})" if nxt else ", top tier reached"))
+          (f", {pull_shark['remaining']} more for the next tier ({nxt})" if nxt else ", top tier reached"))
 
-    top = top_repo(user)
-    if top:
-        name, stars = top
-        nxt = next_tier(STARSTRUCK_TIERS, stars)
-        print(f"Starstruck: most-starred repo {name} has {stars} star(s)" +
-              (f", {nxt - stars} more for the next tier ({nxt})" if nxt else ", top tier reached"))
+    starstruck = progress["starstruck"]
+    if starstruck:
+        stars = starstruck["stars"]
+        nxt = starstruck["next_tier"]
+        print(f"Starstruck: most-starred repo {starstruck['repository']} has {stars} star(s)" +
+              (f", {starstruck['remaining']} more for the next tier ({nxt})" if nxt else ", top tier reached"))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("user", nargs="?", help="GitHub user; defaults to the gh CLI login")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="print machine-readable JSON")
+    args = parser.parse_args()
+    user = args.user or subprocess.run(
+        ["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, check=True).stdout.strip()
+    progress = collect_progress(user)
+    if args.as_json:
+        print(json.dumps(progress, indent=2, sort_keys=True))
+    else:
+        print_human(progress)
 
 
 if __name__ == "__main__":
